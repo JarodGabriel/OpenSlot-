@@ -33,7 +33,25 @@ const EMAIL_RE = /.+@.+\..+/;
 const pad = (n: number) => String(n).padStart(2, "0");
 const dateKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
+// Stacks the layout below this width. Component is client-only (ssr:false),
+// so window is available at first render — lazy-init avoids a desktop flash.
+function useIsMobile(breakpoint = 760) {
+  const query = `(max-width: ${breakpoint}px)`;
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(query).matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, [query]);
+  return isMobile;
+}
+
 export default function Scheduler() {
+  const isMobile = useIsMobile();
   const now = useMemo(() => new Date(), []);
   const detected = useMemo(() => detectTz(), []);
   const tzOptions = useMemo(() => buildTzOptions(detected), [detected]);
@@ -330,7 +348,7 @@ export default function Scheduler() {
       style={{
         minHeight: "100vh",
         width: "100%",
-        padding: "40px 24px",
+        padding: isMobile ? "14px 10px" : "40px 24px",
         background: "#eef1f5",
         display: "flex",
         alignItems: "flex-start",
@@ -341,22 +359,24 @@ export default function Scheduler() {
         style={{
           width: "100%",
           maxWidth: 1060,
-          minHeight: 660,
+          minHeight: isMobile ? "auto" : 660,
           background: "#fff",
           border: "1px solid #e7ebf0",
           borderRadius: 16,
           boxShadow: "0 1px 2px rgba(20,40,80,.04), 0 22px 60px rgba(20,40,80,.12)",
           display: "flex",
+          flexDirection: isMobile ? "column" : "row",
           overflow: "hidden",
         }}
       >
         {/* ===================== LEFT RAIL ===================== */}
         <div
           style={{
-            width: 336,
+            width: isMobile ? "100%" : 336,
             flex: "none",
-            borderRight: "1px solid #eef1f4",
-            padding: "30px 30px 26px",
+            borderRight: isMobile ? "none" : "1px solid #eef1f4",
+            borderBottom: isMobile ? "1px solid #eef1f4" : "none",
+            padding: isMobile ? "22px 22px 20px" : "30px 30px 26px",
             display: "flex",
             flexDirection: "column",
           }}
@@ -555,7 +575,7 @@ export default function Scheduler() {
           style={{
             flex: 1,
             minWidth: 0,
-            padding: "30px 32px",
+            padding: isMobile ? "22px 20px 26px" : "30px 32px",
             display: "flex",
             flexDirection: "column",
           }}
@@ -567,7 +587,8 @@ export default function Scheduler() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  gap: 16,
+                  flexWrap: "wrap",
+                  gap: 12,
                   marginBottom: 20,
                 }}
               >
@@ -664,9 +685,17 @@ export default function Scheduler() {
                 </div>
               </div>
 
-              <div style={{ display: "flex", gap: 30, flex: 1, minHeight: 0 }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: isMobile ? "column" : "row",
+                  gap: isMobile ? 22 : 30,
+                  flex: isMobile ? "none" : 1,
+                  minHeight: 0,
+                }}
+              >
                 {/* calendar */}
-                <div style={{ width: 352, flex: "none" }}>
+                <div style={{ width: isMobile ? "100%" : 352, flex: "none", maxWidth: 360 }}>
                   <div
                     style={{
                       display: "flex",
@@ -752,8 +781,9 @@ export default function Scheduler() {
                       <div
                         className="scroll-col"
                         style={{
-                          flex: 1,
+                          flex: isMobile ? "none" : 1,
                           minHeight: 0,
+                          maxHeight: isMobile ? 360 : undefined,
                           overflowY: "auto",
                           paddingRight: 6,
                           display: "flex",
@@ -800,6 +830,7 @@ export default function Scheduler() {
                     <div
                       style={{
                         flex: 1,
+                        minHeight: isMobile ? 120 : undefined,
                         display: "flex",
                         flexDirection: "column",
                         alignItems: "center",
