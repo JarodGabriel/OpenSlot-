@@ -4,6 +4,8 @@
 // calendar id) are only meaningful server-side; on the client they fall back to
 // the defaults below, which is fine because the client never relies on them.
 
+import type { DurationKey } from "./durations";
+
 function num(v: string | undefined, fallback: number): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -30,6 +32,46 @@ const requestedTypes = list(process.env.NEXT_PUBLIC_MEETING_OPTIONS).filter(
   (t): t is MeetingType => (ALL_MEETING_TYPES as readonly string[]).includes(t),
 );
 
+// Optional "event types" (Calendly-style): each pre-selects which meeting
+// lengths are offered and which conferencing is used. Configured as a JSON
+// array in NEXT_PUBLIC_EVENT_TYPES, e.g.:
+//   [{"key":"student","label":"Student","durations":[15],"conferencing":"zoom"},
+//    {"key":"pro","label":"Professional","durations":[15,30,60,"custom"],"conferencing":"meet"}]
+// Empty/unset = no event-type layer (single flow with all lengths).
+export interface EventType {
+  key: string;
+  label: string;
+  durations: DurationKey[];
+  conferencing: MeetingType;
+}
+
+function parseEventTypes(): EventType[] {
+  const raw = process.env.NEXT_PUBLIC_EVENT_TYPES;
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter(
+        (e) =>
+          e &&
+          typeof e.key === "string" &&
+          typeof e.label === "string" &&
+          Array.isArray(e.durations) &&
+          e.durations.length > 0 &&
+          (e.conferencing === "meet" || e.conferencing === "zoom"),
+      )
+      .map((e) => ({
+        key: e.key as string,
+        label: e.label as string,
+        durations: e.durations as DurationKey[],
+        conferencing: e.conferencing as MeetingType,
+      }));
+  } catch {
+    return [];
+  }
+}
+
 export const config = {
   // Public — display
   hostName: process.env.NEXT_PUBLIC_HOST_NAME || "Jarod Gabriel M.",
@@ -54,4 +96,6 @@ export const config = {
   meetingOptions: (requestedTypes.length ? requestedTypes : ["meet"]) as MeetingType[],
   // Fixed Zoom link (Personal Meeting Room) used when "zoom" is chosen.
   zoomUrl: process.env.ZOOM_MEETING_URL || "",
+  // Event types (Student / Professional, etc.). Empty = no event-type layer.
+  eventTypes: parseEventTypes(),
 } as const;

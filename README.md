@@ -34,6 +34,10 @@ buttons all recolor to match.
 - **Google Meet and/or Zoom** — auto-generate a Meet link, attach a fixed Zoom link, or
   offer both and let the guest pick at booking. Set `NEXT_PUBLIC_MEETING_OPTIONS`
   (e.g. `meet,zoom`) and `ZOOM_MEETING_URL`.
+- **Event types** (Calendly-style) — define named types (e.g. a 15-min "Student" type on
+  Zoom and a "Professional" type on Meet with all lengths). The booker picks the type
+  first; it sets the available lengths and the conferencing. Configure via
+  `NEXT_PUBLIC_EVENT_TYPES`.
 - **Conflict-aware across all your calendars** — check free/busy across as many calendars
   as you like (work, health, side projects), so a meeting on *any* of them automatically
   removes that slot and you never get double-booked. See

@@ -83,13 +83,21 @@ export default function Scheduler({
   const detected = useMemo(() => detectTz(), []);
   const tzOptions = useMemo(() => buildTzOptions(detected), [detected]);
 
-  // In reschedule mode the length is fixed by the original booking.
+  // Optional event types (Student / Professional, etc.).
+  const eventTypes = config.eventTypes;
+  const hasEventTypes = eventTypes.length > 0;
+
+  // In reschedule mode the length is fixed by the original booking; with event
+  // types the default length is the first one the first type offers.
   const initialDuration: DurationKey = reschedule
     ? ([15, 30, 60] as number[]).includes(reschedule.durationMin)
       ? (reschedule.durationMin as DurationKey)
       : "custom"
-    : DEFAULT_DURATION;
+    : hasEventTypes
+      ? eventTypes[0].durations[0]
+      : DEFAULT_DURATION;
 
+  const [eventTypeKey, setEventTypeKey] = useState(eventTypes[0]?.key ?? "");
   const [step, setStep] = useState<Step>("select");
   const [duration, setDuration] = useState<DurationKey>(initialDuration);
   const [customMins, setCustomMins] = useState(
@@ -105,7 +113,23 @@ export default function Scheduler({
   const [email, setEmail] = useState("");
   const [note, setNote] = useState("");
   const [meetingType, setMeetingType] = useState<MeetingType>(config.meetingOptions[0]);
-  const meetingLabel = MEETING_LABELS[meetingType];
+
+  // With event types, the active type decides durations + conferencing.
+  const activeEventType = hasEventTypes
+    ? (eventTypes.find((e) => e.key === eventTypeKey) ?? eventTypes[0])
+    : undefined;
+  const availableDurations = activeEventType
+    ? DURATIONS.filter((d) => activeEventType.durations.includes(d.k))
+    : DURATIONS;
+  const effectiveMeetingType: MeetingType = activeEventType ? activeEventType.conferencing : meetingType;
+  const meetingLabel = MEETING_LABELS[effectiveMeetingType];
+
+  const pickEventType = (key: string) => {
+    const et = eventTypes.find((e) => e.key === key);
+    setEventTypeKey(key);
+    if (et) setDuration(et.durations[0]);
+    setSelTime(null);
+  };
 
   const [slots, setSlots] = useState<number[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
@@ -201,7 +225,8 @@ export default function Scheduler({
           name: name.trim(),
           email: email.trim(),
           note,
-          meetingType,
+          meetingType: effectiveMeetingType,
+          eventType: activeEventType?.label,
         }),
       });
       const data = await res.json();
@@ -216,7 +241,7 @@ export default function Scheduler({
     } finally {
       setBooking(false);
     }
-  }, [selTime, name, email, note, durMins, meetingType]);
+  }, [selTime, name, email, note, durMins, effectiveMeetingType, activeEventType]);
 
   const doReschedule = useCallback(async () => {
     if (!selTime || !reschedule) return;
@@ -243,7 +268,8 @@ export default function Scheduler({
   const reset = () => {
     const n = new Date();
     setStep("select");
-    setDuration(DEFAULT_DURATION);
+    setEventTypeKey(eventTypes[0]?.key ?? "");
+    setDuration(initialDuration);
     setCustomMins("");
     setSelDate(null);
     setSelTime(null);
@@ -528,8 +554,10 @@ export default function Scheduler({
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 13 }}>
             <Video style={{ flex: "none" }} />
             <span style={{ fontSize: 12.5, color: "#5a6573" }}>
-              {config.meetingOptions.map((t) => MEETING_LABELS[t]).join(" or ")} &mdash; link sent on
-              confirmation
+              {hasEventTypes
+                ? MEETING_LABELS[effectiveMeetingType]
+                : config.meetingOptions.map((t) => MEETING_LABELS[t]).join(" or ")}{" "}
+              &mdash; link sent on confirmation
             </span>
           </div>
 
@@ -552,7 +580,50 @@ export default function Scheduler({
             </div>
           )}
 
-          {step === "select" && !isReschedule && (
+          {step === "select" && !isReschedule && hasEventTypes && eventTypes.length > 1 && (
+            <>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  letterSpacing: ".04em",
+                  textTransform: "uppercase",
+                  color: "#9aa3ad",
+                  margin: "24px 0 10px",
+                }}
+              >
+                Meeting type
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {eventTypes.map((et) => {
+                  const sel = et.key === eventTypeKey;
+                  return (
+                    <button
+                      key={et.key}
+                      type="button"
+                      onClick={() => pickEventType(et.key)}
+                      style={{
+                        flex: 1,
+                        padding: "11px 12px",
+                        borderRadius: 10,
+                        border: `1.5px solid ${sel ? accent : "#e4e8ed"}`,
+                        background: sel ? tint : "#fff",
+                        color: "#15233a",
+                        fontSize: 14,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        transition: "all .13s",
+                      }}
+                    >
+                      {et.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {step === "select" && !isReschedule && availableDurations.length > 1 && (
             <>
               <div
                 style={{
@@ -567,7 +638,7 @@ export default function Scheduler({
                 Meeting length
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {DURATIONS.map((o) => {
+                {availableDurations.map((o) => {
                   const sel = o.k === duration;
                   return (
                     <button
@@ -1004,7 +1075,7 @@ export default function Scheduler({
                     style={{ ...inputStyle, lineHeight: 1.5 }}
                   />
                 </label>
-                {config.meetingOptions.length > 1 && (
+                {!hasEventTypes && config.meetingOptions.length > 1 && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: "#46505c" }}>
                       How should we meet?

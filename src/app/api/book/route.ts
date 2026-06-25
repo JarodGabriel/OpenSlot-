@@ -19,6 +19,7 @@ interface BookBody {
   email?: string;
   note?: string;
   meetingType?: string;
+  eventType?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -44,10 +45,15 @@ export async function POST(req: NextRequest) {
   if (!name) return NextResponse.json({ error: "Name is required." }, { status: 400 });
   if (!EMAIL_RE.test(email)) return NextResponse.json({ error: "A valid email is required." }, { status: 400 });
 
-  // Resolve conferencing: only honor a requested type the host actually offers.
+  // Resolve conferencing: honor a requested type the host actually offers —
+  // either via the global options or any event type's conferencing.
+  const allowedTypes = new Set<MeetingType>([
+    ...config.meetingOptions,
+    ...config.eventTypes.map((e) => e.conferencing),
+  ]);
   const requested = body.meetingType as MeetingType | undefined;
   const meetingType: MeetingType =
-    requested && config.meetingOptions.includes(requested) ? requested : config.meetingOptions[0];
+    requested && allowedTypes.has(requested) ? requested : config.meetingOptions[0];
   let conferencing: Conferencing;
   if (meetingType === "zoom") {
     if (!config.zoomUrl) {
@@ -61,8 +67,11 @@ export async function POST(req: NextRequest) {
   const startISO = new Date(startInst).toISOString();
   const endISO = new Date(startInst + durationMin * 60000).toISOString();
   // Include the guest's name so the host can tell bookings apart at a glance
-  // (otherwise every event on the host's calendar reads identically).
-  const title = `${durationMin} Minute Meeting — ${name} & ${config.hostName}`;
+  // (otherwise every event on the host's calendar reads identically). Prefix
+  // the event-type label (e.g. "Student") when one is provided.
+  const eventTypeLabel = (body.eventType ?? "").trim().slice(0, 40);
+  const base = `${durationMin} Minute Meeting — ${name} & ${config.hostName}`;
+  const title = eventTypeLabel ? `${eventTypeLabel} · ${base}` : base;
 
   // Choose the event id up front (hex is a valid Google event id) so we can mint
   // reschedule/cancel links and embed them in the invite at creation time.
