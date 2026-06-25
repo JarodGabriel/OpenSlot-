@@ -1,29 +1,19 @@
-"use client";
+// Server component: reads the host's schedule config (time zone + working hours)
+// from the environment and hands it to the client scheduler, so the calendar can
+// correctly grey out days whose booking window has already closed.
 
-// The scheduler relies on the visitor's local time zone and clock, so we render
-// it client-only to avoid SSR/hydration mismatches around Date/Intl.
-import dynamic from "next/dynamic";
-
-const Scheduler = dynamic(() => import("@/components/Scheduler"), {
-  ssr: false,
-  loading: () => (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "#eef1f5",
-        color: "#9aa3ad",
-        fontFamily: "'Public Sans',-apple-system,'Segoe UI',sans-serif",
-        fontSize: 14,
-      }}
-    >
-      Loading…
-    </div>
-  ),
-});
+import { config } from "@/lib/config";
+import SchedulerClient from "@/components/SchedulerClient";
 
 export default function Page() {
-  return <Scheduler />;
+  return (
+    <SchedulerClient
+      schedule={{
+        hostTz: config.hostTz,
+        workStartHour: config.workStartHour,
+        workEndHour: config.workEndHour,
+        allowWeekends: config.allowWeekends,
+      }}
+    />
+  );
 }

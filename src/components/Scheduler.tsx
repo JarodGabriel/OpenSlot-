@@ -9,7 +9,7 @@ import {
   hexAlpha,
   type DurationKey,
 } from "@/lib/durations";
-import { fmtDateFull, fmtTime } from "@/lib/timezone";
+import { fmtDateFull, fmtTime, instantFromHostWall } from "@/lib/timezone";
 import { buildTzOptions, detectTz, tzLabelFor } from "@/lib/tzOptions";
 import { buildIcs, icsFilename } from "@/lib/ics";
 import {
@@ -55,7 +55,28 @@ export interface RescheduleContext {
   durationMin: number;
 }
 
-export default function Scheduler({ reschedule }: { reschedule?: RescheduleContext } = {}) {
+export interface HostSchedule {
+  hostTz: string;
+  workStartHour: number;
+  workEndHour: number;
+  allowWeekends: boolean;
+}
+
+export default function Scheduler({
+  reschedule,
+  schedule: hostSchedule,
+}: {
+  reschedule?: RescheduleContext;
+  schedule?: HostSchedule;
+} = {}) {
+  // Host working-hours config. Passed from the server (real env values); falls
+  // back to the client-side config defaults if rendered without props.
+  const sched: HostSchedule = hostSchedule ?? {
+    hostTz: config.hostTz,
+    workStartHour: config.workStartHour,
+    workEndHour: config.workEndHour,
+    allowWeekends: config.allowWeekends,
+  };
   const isReschedule = !!reschedule;
   const isMobile = useIsMobile();
   const now = useMemo(() => new Date(), []);
@@ -285,11 +306,32 @@ export default function Scheduler({ reschedule }: { reschedule?: RescheduleConte
   const tzLabel = tzLabelFor(tzOptions, tz);
   const canSchedule = !!(name.trim() && EMAIL_RE.test(email) && selTime && durMins > 0);
 
+  // Instant of the LAST bookable slot start on a day (host wall-clock), or null
+  // if no slot of the current length fits the working-hours window.
+  const lastSlotStart = (d: Date): number | null => {
+    const startMin = sched.workStartHour * 60;
+    const endMin = sched.workEndHour * 60;
+    let lastT: number | null = null;
+    for (let t = startMin; t + durMins <= endMin; t += 30) lastT = t;
+    if (lastT === null) return null;
+    return instantFromHostWall(
+      d.getFullYear(),
+      d.getMonth(),
+      d.getDate(),
+      Math.floor(lastT / 60),
+      lastT % 60,
+      sched.hostTz,
+    );
+  };
+
+  // A day is bookable only if it's a working day AND at least one slot start is
+  // still in the future — so today greys out once its window closes.
   const isDayAvailable = (d: Date) => {
-    if (d < today) return false;
     const dow = d.getDay();
-    if (!config.allowWeekends && (dow === 0 || dow === 6)) return false;
-    return true;
+    if (!sched.allowWeekends && (dow === 0 || dow === 6)) return false;
+    if (durMins <= 0) return false;
+    const last = lastSlotStart(d);
+    return last !== null && last > Date.now();
   };
 
   // ---- styles -------------------------------------------------------------
@@ -380,7 +422,7 @@ export default function Scheduler({ reschedule }: { reschedule?: RescheduleConte
     while (out.length % 7 !== 0) out.push({ key: `t${out.length}`, label: "", node: null });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewYear, viewMonth, selDate, accent, tint]);
+  }, [viewYear, viewMonth, selDate, accent, tint, durMins]);
 
   const showBack = step === "details";
   const showSummary = step === "details" || step === "done";
@@ -570,7 +612,7 @@ export default function Scheduler({ reschedule }: { reschedule?: RescheduleConte
                       setCustomMins(e.target.value.replace(/[^0-9]/g, ""));
                       setSelTime(null);
                     }}
-                    placeholder="45"
+                    placeholder=""
                     inputMode="numeric"
                     style={{
                       width: 72,
@@ -921,7 +963,7 @@ export default function Scheduler({ reschedule }: { reschedule?: RescheduleConte
                   <input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Sam Rivera"
+                    placeholder=""
                     style={inputStyle}
                   />
                 </label>
@@ -932,7 +974,7 @@ export default function Scheduler({ reschedule }: { reschedule?: RescheduleConte
                   <input
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="sam@company.com"
+                    placeholder=""
                     inputMode="email"
                     style={inputStyle}
                   />
@@ -945,7 +987,7 @@ export default function Scheduler({ reschedule }: { reschedule?: RescheduleConte
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     rows={3}
-                    placeholder="What would you like to cover?"
+                    placeholder=""
                     style={{ ...inputStyle, lineHeight: 1.5 }}
                   />
                 </label>
