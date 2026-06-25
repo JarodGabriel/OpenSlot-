@@ -50,15 +50,30 @@ function useIsMobile(breakpoint = 760) {
   return isMobile;
 }
 
-export default function Scheduler() {
+export interface RescheduleContext {
+  token: string;
+  durationMin: number;
+}
+
+export default function Scheduler({ reschedule }: { reschedule?: RescheduleContext } = {}) {
+  const isReschedule = !!reschedule;
   const isMobile = useIsMobile();
   const now = useMemo(() => new Date(), []);
   const detected = useMemo(() => detectTz(), []);
   const tzOptions = useMemo(() => buildTzOptions(detected), [detected]);
 
+  // In reschedule mode the length is fixed by the original booking.
+  const initialDuration: DurationKey = reschedule
+    ? ([15, 30, 60] as number[]).includes(reschedule.durationMin)
+      ? (reschedule.durationMin as DurationKey)
+      : "custom"
+    : DEFAULT_DURATION;
+
   const [step, setStep] = useState<Step>("select");
-  const [duration, setDuration] = useState<DurationKey>(DEFAULT_DURATION);
-  const [customMins, setCustomMins] = useState("");
+  const [duration, setDuration] = useState<DurationKey>(initialDuration);
+  const [customMins, setCustomMins] = useState(
+    reschedule && initialDuration === "custom" ? String(reschedule.durationMin) : "",
+  );
   const [viewYear, setViewYear] = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth());
   const [selDate, setSelDate] = useState<Date | null>(null);
@@ -77,6 +92,9 @@ export default function Scheduler() {
   const [booking, setBooking] = useState(false);
   const [bookError, setBookError] = useState<string | null>(null);
   const [meetingUrl, setMeetingUrl] = useState<string | null>(null);
+  const [cancelUrl, setCancelUrl] = useState<string | null>(null);
+  const [rescheduleUrl, setRescheduleUrl] = useState<string | null>(null);
+  const [rescheduled, setRescheduled] = useState(false);
 
   const active = findDuration(duration);
   const accent = active.color;
@@ -165,6 +183,8 @@ export default function Scheduler() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Booking failed.");
       setMeetingUrl(data.meetingUrl ?? null);
+      setCancelUrl(data.cancelUrl ?? null);
+      setRescheduleUrl(data.rescheduleUrl ?? null);
       setDemo(Boolean(data.demo));
       setStep("done");
     } catch (e) {
@@ -173,6 +193,28 @@ export default function Scheduler() {
       setBooking(false);
     }
   }, [selTime, name, email, note, durMins]);
+
+  const doReschedule = useCallback(async () => {
+    if (!selTime || !reschedule) return;
+    setBooking(true);
+    setBookError(null);
+    try {
+      const res = await fetch("/api/reschedule", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: reschedule.token, startInst: selTime.inst }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Reschedule failed.");
+      setDemo(Boolean(data.demo));
+      setRescheduled(true);
+      setStep("done");
+    } catch (e) {
+      setBookError((e as Error).message);
+    } finally {
+      setBooking(false);
+    }
+  }, [selTime, reschedule]);
 
   const reset = () => {
     const n = new Date();
@@ -449,7 +491,13 @@ export default function Scheduler() {
             {meetingTitle}
           </h1>
 
-          {step === "select" && (
+          {step === "select" && isReschedule && (
+            <div style={{ fontSize: 13.5, color: "#7a8794", marginTop: 16, lineHeight: 1.5 }}>
+              Rescheduling — pick a new time on the right. Your details stay the same.
+            </div>
+          )}
+
+          {step === "select" && !isReschedule && (
             <>
               <div
                 style={{
@@ -593,7 +641,7 @@ export default function Scheduler() {
                 }}
               >
                 <div style={{ fontSize: 21, fontWeight: 700, color: "#15233a", letterSpacing: "-0.01em" }}>
-                  Select a Date &amp; Time
+                  {isReschedule ? "Pick a new time" : "Select a Date & Time"}
                 </div>
                 <div style={{ position: "relative" }}>
                   <button
@@ -805,20 +853,22 @@ export default function Scheduler() {
                               {sel && (
                                 <button
                                   type="button"
-                                  onClick={() => setStep("details")}
+                                  onClick={isReschedule ? doReschedule : () => setStep("details")}
+                                  disabled={booking}
                                   style={{
-                                    flex: 1,
+                                    flex: 1.4,
                                     fontSize: 15,
                                     fontWeight: 600,
                                     color: "#fff",
                                     background: accent,
                                     border: "none",
                                     borderRadius: 10,
-                                    cursor: "pointer",
+                                    cursor: booking ? "default" : "pointer",
                                     transition: "background .12s",
+                                    opacity: booking ? 0.7 : 1,
                                   }}
                                 >
-                                  Next
+                                  {isReschedule ? (booking ? "Saving…" : "Confirm") : "Next"}
                                 </button>
                               )}
                             </div>
@@ -958,11 +1008,17 @@ export default function Scheduler() {
                 <Check size={30} stroke="#22a35c" width={2.6} />
               </div>
               <div style={{ fontSize: 24, fontWeight: 700, color: "#15233a", letterSpacing: "-0.01em" }}>
-                You are scheduled
+                {rescheduled ? "You’re rescheduled" : "You are scheduled"}
               </div>
               <div style={{ fontSize: 14, color: "#5a6573", margin: "9px 0 24px" }}>
-                A calendar invitation has been sent to{" "}
-                <strong style={{ color: "#15233a", fontWeight: 600 }}>{email}</strong>.
+                {rescheduled ? (
+                  <>An updated invitation has been sent to everyone on the meeting.</>
+                ) : (
+                  <>
+                    A calendar invitation has been sent to{" "}
+                    <strong style={{ color: "#15233a", fontWeight: 600 }}>{email}</strong>.
+                  </>
+                )}
               </div>
               <div
                 style={{
@@ -1033,22 +1089,24 @@ export default function Scheduler() {
                   >
                     Add to calendar
                   </a>
-                  <button
-                    type="button"
-                    onClick={reset}
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 500,
-                      color: "#5a6573",
-                      background: "#fff",
-                      border: "1px solid #d4dae1",
-                      borderRadius: 10,
-                      padding: "12px 20px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Schedule another
-                  </button>
+                  {!isReschedule && (
+                    <button
+                      type="button"
+                      onClick={reset}
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 500,
+                        color: "#5a6573",
+                        background: "#fff",
+                        border: "1px solid #d4dae1",
+                        borderRadius: 10,
+                        padding: "12px 20px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Schedule another
+                    </button>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -1066,6 +1124,18 @@ export default function Scheduler() {
                 >
                   Use Outlook or Apple Calendar? Download .ics
                 </button>
+                {!isReschedule && rescheduleUrl && cancelUrl && (
+                  <div style={{ fontSize: 12.5, color: "#9aa3ad", marginTop: 2 }}>
+                    Need to change it?{" "}
+                    <a href={rescheduleUrl} style={{ color: "#5a6573", textDecoration: "underline" }}>
+                      Reschedule
+                    </a>
+                    {" · "}
+                    <a href={cancelUrl} style={{ color: "#5a6573", textDecoration: "underline" }}>
+                      Cancel
+                    </a>
+                  </div>
+                )}
               </div>
             </div>
           )}

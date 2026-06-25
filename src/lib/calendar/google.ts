@@ -9,6 +9,7 @@ import type {
   BusyRange,
   CreateEventInput,
   CreateEventResult,
+  EventInfo,
 } from "./provider";
 
 export const GOOGLE_SCOPES = [
@@ -78,6 +79,7 @@ export class GoogleProvider implements CalendarProvider {
       conferenceDataVersion: 1,
       sendUpdates: "all",
       requestBody: {
+        id: input.id, // caller-chosen id (so links exist before insert)
         summary: input.title,
         description: input.note?.trim() || undefined,
         start: { dateTime: input.startISO, timeZone: input.hostTz },
@@ -94,8 +96,46 @@ export class GoogleProvider implements CalendarProvider {
     });
 
     return {
-      id: res.data.id ?? "",
+      id: res.data.id ?? input.id ?? "",
       meetingUrl: res.data.hangoutLink ?? undefined,
     };
+  }
+
+  async getEvent(eventId: string): Promise<EventInfo | null> {
+    const calendar = calendarClient();
+    try {
+      const res = await calendar.events.get({ calendarId: config.calendarId, eventId });
+      const e = res.data;
+      if (!e || e.status === "cancelled") return null;
+      const guest = e.attendees?.find((a) => !a.organizer && a.email);
+      return {
+        id: e.id ?? eventId,
+        title: e.summary ?? "",
+        startISO: e.start?.dateTime ?? e.start?.date ?? "",
+        endISO: e.end?.dateTime ?? e.end?.date ?? "",
+        attendeeEmail: guest?.email ?? undefined,
+        meetingUrl: e.hangoutLink ?? undefined,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async updateEventTime(eventId: string, startISO: string, endISO: string, hostTz: string): Promise<void> {
+    const calendar = calendarClient();
+    await calendar.events.patch({
+      calendarId: config.calendarId,
+      eventId,
+      sendUpdates: "all",
+      requestBody: {
+        start: { dateTime: startISO, timeZone: hostTz },
+        end: { dateTime: endISO, timeZone: hostTz },
+      },
+    });
+  }
+
+  async cancelEvent(eventId: string): Promise<void> {
+    const calendar = calendarClient();
+    await calendar.events.delete({ calendarId: config.calendarId, eventId, sendUpdates: "all" });
   }
 }

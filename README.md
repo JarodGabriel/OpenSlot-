@@ -28,6 +28,9 @@ buttons all recolor to match.
   or gets cut off — no separate mobile build, no app to install.
 - **Real calendar sync** — server-side Google free/busy + event creation with a Meet
   link and an emailed invite. OAuth secrets stay on the server, never in the browser.
+- **Reschedule & cancel links** — every booking comes with Calendly-style reschedule and
+  cancel links (in the invite and on the confirmation screen), secured with signed tokens
+  so only the guest can change their own meeting.
 - **Conflict-aware across all your calendars** — check free/busy across as many calendars
   as you like (work, health, side projects), so a meeting on *any* of them automatically
   removes that slot and you never get double-booked. See

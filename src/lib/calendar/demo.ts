@@ -8,6 +8,7 @@ import type {
   BusyRange,
   CreateEventInput,
   CreateEventResult,
+  EventInfo,
 } from "./provider";
 
 // Cheap deterministic hash so a given day always "looks" the same.
@@ -39,7 +40,30 @@ export class DemoProvider implements CalendarProvider {
   }
 
   async createEvent(input: CreateEventInput): Promise<CreateEventResult> {
-    const id = `demo-${Buffer.from(`${input.startISO}-${input.attendeeEmail}`).toString("base64url").slice(0, 16)}`;
+    const id =
+      input.id ||
+      `demo-${Buffer.from(`${input.startISO}-${input.attendeeEmail}`).toString("base64url").slice(0, 16)}`;
     return { id, meetingUrl: "https://meet.google.com/demo-not-a-real-link" };
+  }
+
+  // Demo mode keeps no state, so reschedule/cancel just succeed as no-ops and
+  // getEvent returns a plausible placeholder so the pages render.
+  async getEvent(eventId: string): Promise<EventInfo | null> {
+    return {
+      id: eventId,
+      title: "Demo Meeting",
+      startISO: new Date().toISOString(),
+      endISO: new Date().toISOString(),
+      attendeeEmail: "guest@example.com",
+      meetingUrl: "https://meet.google.com/demo-not-a-real-link",
+    };
+  }
+
+  async updateEventTime(): Promise<void> {
+    /* no-op in demo mode */
+  }
+
+  async cancelEvent(): Promise<void> {
+    /* no-op in demo mode */
   }
 }

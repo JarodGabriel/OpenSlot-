@@ -3,9 +3,11 @@
 // Creates the event (with a Meet link) on the host's calendar and emails the
 // invite. Re-validates everything server-side — never trust the client.
 
+import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/lib/config";
 import { getProvider, isDemoMode } from "@/lib/calendar";
+import { signBookingToken } from "@/lib/token";
 
 const EMAIL_RE = /.+@.+\..+/;
 
@@ -46,16 +48,34 @@ export async function POST(req: NextRequest) {
   // (otherwise every event on the host's calendar reads identically).
   const title = `${durationMin} Minute Meeting — ${name} & ${config.hostName}`;
 
+  // Choose the event id up front (hex is a valid Google event id) so we can mint
+  // reschedule/cancel links and embed them in the invite at creation time.
+  const eventId = crypto.randomBytes(16).toString("hex");
+  const token = signBookingToken({ id: eventId, d: durationMin });
+  const origin = req.nextUrl.origin;
+  const rescheduleUrl = `${origin}/reschedule/${token}`;
+  const cancelUrl = `${origin}/cancel/${token}`;
+
+  const description = [
+    note.trim(),
+    "Need to make changes to this meeting?",
+    `Reschedule: ${rescheduleUrl}`,
+    `Cancel: ${cancelUrl}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   try {
     const provider = getProvider();
     const result = await provider.createEvent({
+      id: eventId,
       title,
       startISO,
       endISO,
       hostTz: config.hostTz,
       attendeeEmail: email,
       attendeeName: name,
-      note,
+      note: description,
     });
     return NextResponse.json({
       ok: true,
@@ -63,6 +83,8 @@ export async function POST(req: NextRequest) {
       eventId: result.id,
       meetingUrl: result.meetingUrl ?? null,
       summary: title,
+      rescheduleUrl,
+      cancelUrl,
     });
   } catch (err) {
     console.error("book error:", err);
