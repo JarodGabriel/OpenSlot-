@@ -25,6 +25,10 @@ buttons all recolor to match.
 - **Yours to brand** — your name, your tagline, your domain, your working hours.
 - **Real calendar sync** — server-side Google free/busy + event creation with a Meet
   link and an emailed invite. OAuth secrets stay on the server, never in the browser.
+- **Conflict-aware across all your calendars** — check free/busy across as many calendars
+  as you like (work, health, side projects), so a meeting on *any* of them automatically
+  removes that slot and you never get double-booked. See
+  [Blocking across multiple calendars](#blocking-across-multiple-calendars).
 - **Works out of the box** — runs in **demo mode** with simulated availability before you
   connect anything, so you can try it in under a minute.
 - **Extensible** — a provider-agnostic backend; an Outlook/Microsoft 365 (Teams) provider
